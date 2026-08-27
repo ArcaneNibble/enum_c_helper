@@ -43,7 +43,7 @@ pub unsafe trait EnumDiscriminant: Copy {
     /// The raw integer type for this enum discriminant
     ///
     /// This can be one of Rust's primitive integer types
-    type ReprTy: Copy + as_u128::AsU128;
+    type ReprTy: Copy + core::convert::Into<u128>;
 
     /// The (1-1) corresponding original enum type
     type FancyTy: EnumHelped<DiscriminantTy = Self>;
@@ -65,8 +65,7 @@ pub unsafe trait EnumDiscriminant: Copy {
     where
         Self: Sized,
     {
-        use crate::as_u128::AsU128;
-        let x_128 = x.as_u128();
+        let x_128: u128 = x.into();
         if x_128 >= Self::NUM_VARIANTS {
             panic!("enum variant {} out of range", x_128);
         }
@@ -83,8 +82,7 @@ pub unsafe trait EnumDiscriminant: Copy {
         Self: Sized,
         Self::FancyTy: Default,
     {
-        use crate::as_u128::AsU128;
-        let x_128 = x.as_u128();
+        let x_128: u128 = x.into();
         if x_128 >= Self::NUM_VARIANTS {
             return Self::FancyTy::default().as_discriminant();
         }
@@ -100,8 +98,7 @@ pub unsafe trait EnumDiscriminant: Copy {
     where
         Self: Sized,
     {
-        use crate::as_u128::AsU128;
-        let x_128 = x.as_u128();
+        let x_128: u128 = x.into();
         if x_128 >= Self::NUM_VARIANTS {
             return None;
         }
@@ -109,6 +106,41 @@ pub unsafe trait EnumDiscriminant: Copy {
         unsafe { Some(mem::transmute_copy::<_, Self>(&x)) }
     }
 }
+
+/// Helper trait for converting enums to integers in a generic and dyn-compatible way
+///
+/// There are automatic built-in impls that allow coercion to same-or-larger integers of the same signed-ness.
+pub trait TypeErasedDynEnumAsInt<IntTy> {
+    fn as_int(&self) -> IntTy;
+}
+
+macro_rules! impl_type_erase {
+    ($sz:ident) => {
+        impl<
+            R: ::core::convert::Into<$sz>,
+            D: EnumDiscriminant<ReprTy = R>,
+            E: EnumHelped<DiscriminantTy = D>,
+        > TypeErasedDynEnumAsInt<$sz> for E
+        {
+            fn as_int(&self) -> $sz {
+                self.as_discriminant().as_int().into()
+            }
+        }
+    };
+}
+
+impl_type_erase!(u8);
+impl_type_erase!(i8);
+impl_type_erase!(u16);
+impl_type_erase!(i16);
+impl_type_erase!(u32);
+impl_type_erase!(i32);
+impl_type_erase!(u64);
+impl_type_erase!(i64);
+impl_type_erase!(u128);
+impl_type_erase!(i128);
+impl_type_erase!(usize);
+impl_type_erase!(isize);
 
 /// Auto-implement enum helper traits (while correctly counting variants)
 ///
@@ -165,36 +197,6 @@ macro_rules! enum_c_helper {
             }
         }
     };
-}
-
-mod as_u128 {
-    pub trait AsU128 {
-        fn as_u128(self) -> u128;
-    }
-
-    macro_rules! as_usize {
-        ($ty:ty) => {
-            impl AsU128 for $ty {
-                #[inline(always)]
-                fn as_u128(self) -> u128 {
-                    self as u128
-                }
-            }
-        };
-    }
-
-    as_usize!(u8);
-    as_usize!(u16);
-    as_usize!(u32);
-    as_usize!(u64);
-    as_usize!(u128);
-    as_usize!(usize);
-    as_usize!(i8);
-    as_usize!(i16);
-    as_usize!(i32);
-    as_usize!(i64);
-    as_usize!(i128);
-    as_usize!(isize);
 }
 
 #[cfg(test)]
@@ -287,5 +289,13 @@ mod tests {
             <_>::from_int_or_default(3),
             TestEnumDiscriminant::VariantTwo
         ));
+    }
+
+    #[test]
+    fn test_type_erased_as_int() {
+        let _x: u8 = TestEnum::VariantOne.as_int();
+        let _x: u16 = TestEnum::VariantOne.as_int();
+        let _x: u32 = TestEnum::VariantOne.as_int();
+        let _x: u64 = TestEnum::VariantOne.as_int();
     }
 }

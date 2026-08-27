@@ -63,7 +63,10 @@ This is useful so that you can:
 #     }
 # }
 fn thing_as_u8(x: ExampleEnum) -> u8 {
-    x.as_discriminant().as_int()
+    x.as_int()
+}
+fn thing_as_u32(x: ExampleEnum) -> u32 {
+    x.as_int()
 }
 fn thing_kind(x: u8) -> ExampleEnumDiscriminant {
     <_>::from_int(x)
