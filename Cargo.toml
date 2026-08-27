@@ -1,7 +1,10 @@
 [package]
 name = "enum_c_helper"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2024"
+license = "0BSD"
+repository = "https://github.com/ArcaneNibble/enum_c_helper"
+description = "Opinionated helpers for dealing with #[repr(C)] enums"
 
 [dependencies]
 mident = { version = "0.0.1", path = "../mident" }
