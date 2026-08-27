@@ -29,6 +29,12 @@ pub unsafe trait EnumHelped {
             *self_
         }
     }
+
+    #[inline(always)]
+    /// Convert the enum discriminant to a raw integer
+    fn as_int(&self) -> <Self::DiscriminantTy as EnumDiscriminant>::ReprTy {
+        self.as_discriminant().as_int()
+    }
 }
 
 /// Trait that can be auto-implemented on the corresponding discriminant enum
@@ -52,6 +58,9 @@ pub unsafe trait EnumDiscriminant: Copy {
     /// Convert the enum discriminant to a raw integer
     fn as_int(&self) -> Self::ReprTy {
         unsafe {
+            // SAFETY: We must be a `#[repr(uX)]` enum
+            // Ideally we'd not need unsafe here, but this is unavoidable in a generic context.
+            debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<Self::ReprTy>());
             let self_ = self as *const Self as *const Self::ReprTy;
             *self_
         }
@@ -61,15 +70,15 @@ pub unsafe trait EnumDiscriminant: Copy {
     /// Convert the enum discriminant from a raw integer
     ///
     /// Panics if the integer is out-of-range
-    fn from_int(x: Self::ReprTy) -> Self
-    where
-        Self: Sized,
-    {
+    fn from_int(x: Self::ReprTy) -> Self {
         let x_128: u128 = x.into();
         if x_128 >= Self::NUM_VARIANTS {
             panic!("enum variant {} out of range", x_128);
         }
         debug_assert_eq!(mem::size_of::<Self>(), mem::size_of::<Self::ReprTy>());
+        // SAFETY: We must be a `#[repr(uX)]` enum,
+        // with the expected number of variants, and without gaps in the discriminant values.
+        // This note also applies to the following functions.
         unsafe { mem::transmute_copy(&x) }
     }
 
@@ -79,7 +88,6 @@ pub unsafe trait EnumDiscriminant: Copy {
     /// Returns a default value if the integer is out-of-range
     fn from_int_or_default(x: Self::ReprTy) -> Self
     where
-        Self: Sized,
         Self::FancyTy: Default,
     {
         let x_128: u128 = x.into();
@@ -94,10 +102,7 @@ pub unsafe trait EnumDiscriminant: Copy {
     /// Convert the enum discriminant from a raw integer
     ///
     /// Returns `None` if the integer is out-of-range
-    fn try_from_int(x: Self::ReprTy) -> Option<Self>
-    where
-        Self: Sized,
-    {
+    fn try_from_int(x: Self::ReprTy) -> Option<Self> {
         let x_128: u128 = x.into();
         if x_128 >= Self::NUM_VARIANTS {
             return None;
@@ -111,7 +116,7 @@ pub unsafe trait EnumDiscriminant: Copy {
 ///
 /// There are automatic built-in impls that allow coercion to same-or-larger integers of the same signed-ness.
 pub trait TypeErasedDynEnumAsInt<IntTy> {
-    fn as_int(&self) -> IntTy;
+    fn as_any_int(&self) -> IntTy;
 }
 
 macro_rules! impl_type_erase {
@@ -122,7 +127,7 @@ macro_rules! impl_type_erase {
             E: EnumHelped<DiscriminantTy = D>,
         > TypeErasedDynEnumAsInt<$sz> for E
         {
-            fn as_int(&self) -> $sz {
+            fn as_any_int(&self) -> $sz {
                 self.as_discriminant().as_int().into()
             }
         }
@@ -244,20 +249,12 @@ mod tests {
 
     #[test]
     fn test_to_int() {
-        assert!(matches!(
-            TestEnum::VariantOne.as_discriminant().as_int(),
-            0u8
-        ));
+        assert!(matches!(TestEnum::VariantOne.as_int(), 0u8));
+
+        assert!(matches!(TestEnum::VariantTwo(123, 12345).as_int(), 1u8));
 
         assert!(matches!(
-            TestEnum::VariantTwo(123, 12345).as_discriminant().as_int(),
-            1u8
-        ));
-
-        assert!(matches!(
-            TestEnum::VariantThree { x: 11111, y: 22222 }
-                .as_discriminant()
-                .as_int(),
+            TestEnum::VariantThree { x: 11111, y: 22222 }.as_int(),
             2u8
         ));
     }
@@ -293,9 +290,9 @@ mod tests {
 
     #[test]
     fn test_type_erased_as_int() {
-        let _x: u8 = TestEnum::VariantOne.as_int();
-        let _x: u16 = TestEnum::VariantOne.as_int();
-        let _x: u32 = TestEnum::VariantOne.as_int();
-        let _x: u64 = TestEnum::VariantOne.as_int();
+        let _x: u8 = TestEnum::VariantOne.as_any_int();
+        let _x: u16 = TestEnum::VariantOne.as_any_int();
+        let _x: u32 = TestEnum::VariantOne.as_any_int();
+        let _x: u64 = TestEnum::VariantOne.as_any_int();
     }
 }
